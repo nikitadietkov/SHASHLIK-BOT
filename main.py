@@ -1,0 +1,130 @@
+import telebot
+import json
+import os
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+TOKEN = '8539942369:AAHQvcZB5W6DZOG0xeCtWDt8d1X7p0IOTBs'
+bot = telebot.TeleBot(TOKEN)
+
+# Файл, где будет храниться наш список
+DATA_FILE = 'shopping_list.json'
+
+# ТУТ ВАЖНО: Впиши свой юзернейм в Телеграме (без знака @)
+# Можно добавить несколько: ['твой_юзернейм', 'юзернейм_друга']
+ADMIN_USERNAMES = ['nek_223'] 
+
+# --- Блок работы с сохранением данных ---
+def load_data():
+    """Загружает список из файла, если он существует."""
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    return {}
+
+def save_data(data):
+    """Сохраняет список в файл."""
+    with open(DATA_FILE, 'w', encoding='utf-8') as file:
+        json.dump(data, file, ensure_ascii=False, indent=4)
+
+# Инициализируем список при старте бота из файла
+shopping_list = load_data()
+# ----------------------------------------
+
+def get_list_keyboard():
+    """Генерирует клавиатуру из актуального списка."""
+    markup = InlineKeyboardMarkup()
+    for item, votes in shopping_list.items():
+        btn = InlineKeyboardButton(
+            text=f"{item} ({votes} ➕)", 
+            callback_data=f"vote_{item}"
+        )
+        markup.add(btn)
+    return markup
+
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message):
+    text = (
+        "Дарова! Я бот для сбора списка на шашлыки. 🍖\n\n"
+        "Команды:\n"
+        "/add [продукт] — добавить свои хотелки в список\n"
+        "/list — посмотреть список и плюсануть то, что уже добавили\n\n"
+        "У чего будет большее голосов, у того больше преимущество на покупку чем у остальных (чтобы влезть в бюджет)"
+    )
+    bot.reply_to(message, text)
+
+@bot.message_handler(commands=['add'])
+def add_item(message):
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        bot.reply_to(message, "Формат команды: /add Мясо")
+        return
+    
+    item = args[1].strip().capitalize()
+    
+    if item in shopping_list:
+        shopping_list[item] += 1
+        bot.reply_to(message, f"«{item}» уже есть в списке, накинул +1 голос!")
+    else:
+        shopping_list[item] = 1
+        bot.reply_to(message, f"Добавил «{item}» в список покупок!")
+    
+    save_data(shopping_list)
+
+# --- НОВАЯ КОМАНДА ДЛЯ УДАЛЕНИЯ ---
+@bot.message_handler(commands=['del', 'delete'])
+def delete_item(message):
+    # Проверяем, есть ли у пользователя юзернейм и находится ли он в списке админов
+    if message.from_user.username not in ADMIN_USERNAMES:
+        bot.reply_to(message, "Брат, у тебя нет прав удалять продукты из списка! 🚫")
+        return
+
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        bot.reply_to(message, "Формат команды: /del Мясо")
+        return
+    
+    # Делаем первую букву заглавной, чтобы точно совпало с тем, как записано в словаре
+    item = args[1].strip().capitalize()
+    
+    if item in shopping_list:
+        del shopping_list[item] # Удаляем из словаря
+        save_data(shopping_list) # Обязательно сохраняем изменения в файл
+        bot.reply_to(message, f"Удалил «{item}» из списка! 🗑️")
+    else:
+        bot.reply_to(message, f"Брат, «{item}» и так нет в списке.")
+
+@bot.message_handler(commands=['list'])
+def show_list(message):
+    if not shopping_list:
+        bot.reply_to(message, "Список пока пуст. Добавь что-то через команду /add")
+        return
+    
+    bot.send_message(
+        message.chat.id, 
+        "Список на шашлындос (жми на продукт, чтобы плюсануть):", 
+        reply_markup=get_list_keyboard()
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('vote_'))
+def handle_vote(call):
+    item = call.data.split('vote_')[1]
+    
+    if item in shopping_list:
+        shopping_list[item] += 1
+        
+        save_data(shopping_list)
+        
+        # Обновляем клавиатуру
+        bot.edit_message_reply_markup(
+            chat_id=call.message.chat.id, 
+            message_id=call.message.message_id, 
+            reply_markup=get_list_keyboard()
+        )
+        
+        bot.answer_callback_query(call.id, f"+1 за {item}!")
+    else:
+        bot.answer_callback_query(call.id, "Этого продукта уже нет в списке.")
+
+if __name__ == '__main__':
+    print("Бот запущен. Данные в безопасности...")
+    bot.infinity_polling()
