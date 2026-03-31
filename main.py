@@ -3,19 +3,20 @@ import json
 import os
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# БЕРЕМ ТОКЕН ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ (для безопасности на сервере)
 TOKEN = os.getenv('BOT_TOKEN')
 if not TOKEN:
     raise ValueError("ОШИБКА: Токен не найден! Пропиши BOT_TOKEN в переменных окружения.")
 
 bot = telebot.TeleBot(TOKEN)
 
-# ПУТЬ К ФАЙЛУ: Берем из переменных окружения (на Railway это будет наш защищенный диск),
-# а если запускаем на компе без переменной — сохраняем просто как 'shopping_list.json'
 DATA_FILE = os.getenv('DATA_PATH', 'shopping_list.json')
 
-# ТУТ ВАЖНО: Впиши свой юзернейм в Телеграме (без знака @)
+# ТВОИ АДМИНЫ (могут удалять)
 ADMIN_USERNAMES = ['nek_223'] 
+
+# 🛑 ЧЕРНЫЙ СПИСОК (не могут добавлять и голосовать)
+# Вписывай юзернеймы вредителей без @
+BANNED_USERNAMES = ['imapulsed']
 
 # --- Блок работы с сохранением данных ---
 def load_data():
@@ -48,12 +49,18 @@ def send_welcome(message):
         "Команды:\n"
         "/add [продукт] — добавить свои хотелки в список\n"
         "/list — посмотреть список и плюсануть то, что уже добавили\n\n"
-        "У чего будет большее голосов, у того больше преимущество на покупку чем у остальных (чтобы влезть в бюджет)"
+        "👑 Для админов:\n"
+        "/del [продукт] — удалить позицию из списка"
     )
     bot.reply_to(message, text)
 
 @bot.message_handler(commands=['add'])
 def add_item(message):
+    # 🛑 ПРОВЕРКА НА БАН-ЛИСТ ПРИ ДОБАВЛЕНИИ
+    if message.from_user.username in BANNED_USERNAMES:
+        bot.reply_to(message, "Сорян, но тебе запрещено добавлять продукты в список! 🚫")
+        return
+
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
         bot.reply_to(message, "Формат команды: /add Мясо")
@@ -104,6 +111,12 @@ def show_list(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('vote_'))
 def handle_vote(call):
+    # 🛑 ПРОВЕРКА НА БАН-ЛИСТ ПРИ ГОЛОСОВАНИИ
+    if call.from_user.username in BANNED_USERNAMES:
+        # show_alert=True покажет всплывающее окно прямо по центру экрана
+        bot.answer_callback_query(call.id, "Тебе запрещено голосовать! 🚫", show_alert=True)
+        return
+
     item = call.data.split('vote_')[1]
     
     if item in shopping_list:
