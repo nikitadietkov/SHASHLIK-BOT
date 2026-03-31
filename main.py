@@ -3,35 +3,35 @@ import json
 import os
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-TOKEN = '8539942369:AAHQvcZB5W6DZOG0xeCtWDt8d1X7p0IOTBs'
+# БЕРЕМ ТОКЕН ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ (для безопасности на сервере)
+TOKEN = os.getenv('BOT_TOKEN')
+if not TOKEN:
+    raise ValueError("ОШИБКА: Токен не найден! Пропиши BOT_TOKEN в переменных окружения.")
+
 bot = telebot.TeleBot(TOKEN)
 
-# Файл, где будет храниться наш список
-DATA_FILE = 'shopping_list.json'
+# ПУТЬ К ФАЙЛУ: Берем из переменных окружения (на Railway это будет наш защищенный диск),
+# а если запускаем на компе без переменной — сохраняем просто как 'shopping_list.json'
+DATA_FILE = os.getenv('DATA_PATH', 'shopping_list.json')
 
 # ТУТ ВАЖНО: Впиши свой юзернейм в Телеграме (без знака @)
-# Можно добавить несколько: ['твой_юзернейм', 'юзернейм_друга']
 ADMIN_USERNAMES = ['nek_223'] 
 
 # --- Блок работы с сохранением данных ---
 def load_data():
-    """Загружает список из файла, если он существует."""
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, 'r', encoding='utf-8') as file:
             return json.load(file)
     return {}
 
 def save_data(data):
-    """Сохраняет список в файл."""
     with open(DATA_FILE, 'w', encoding='utf-8') as file:
         json.dump(data, file, ensure_ascii=False, indent=4)
 
-# Инициализируем список при старте бота из файла
 shopping_list = load_data()
 # ----------------------------------------
 
 def get_list_keyboard():
-    """Генерирует клавиатуру из актуального списка."""
     markup = InlineKeyboardMarkup()
     for item, votes in shopping_list.items():
         btn = InlineKeyboardButton(
@@ -70,10 +70,8 @@ def add_item(message):
     
     save_data(shopping_list)
 
-# --- НОВАЯ КОМАНДА ДЛЯ УДАЛЕНИЯ ---
 @bot.message_handler(commands=['del', 'delete'])
 def delete_item(message):
-    # Проверяем, есть ли у пользователя юзернейм и находится ли он в списке админов
     if message.from_user.username not in ADMIN_USERNAMES:
         bot.reply_to(message, "Брат, у тебя нет прав удалять продукты из списка! 🚫")
         return
@@ -83,12 +81,11 @@ def delete_item(message):
         bot.reply_to(message, "Формат команды: /del Мясо")
         return
     
-    # Делаем первую букву заглавной, чтобы точно совпало с тем, как записано в словаре
     item = args[1].strip().capitalize()
     
     if item in shopping_list:
-        del shopping_list[item] # Удаляем из словаря
-        save_data(shopping_list) # Обязательно сохраняем изменения в файл
+        del shopping_list[item] 
+        save_data(shopping_list) 
         bot.reply_to(message, f"Удалил «{item}» из списка! 🗑️")
     else:
         bot.reply_to(message, f"Брат, «{item}» и так нет в списке.")
@@ -111,16 +108,13 @@ def handle_vote(call):
     
     if item in shopping_list:
         shopping_list[item] += 1
-        
         save_data(shopping_list)
         
-        # Обновляем клавиатуру
         bot.edit_message_reply_markup(
             chat_id=call.message.chat.id, 
             message_id=call.message.message_id, 
             reply_markup=get_list_keyboard()
         )
-        
         bot.answer_callback_query(call.id, f"+1 за {item}!")
     else:
         bot.answer_callback_query(call.id, "Этого продукта уже нет в списке.")
