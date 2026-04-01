@@ -69,6 +69,10 @@ def add_item(message):
     
     item = args[1].strip().capitalize()
     
+    if len(item) > 30:
+        bot.reply_to(message, "Брат, слишком длинное название! Напиши короче (до 30 символов).")
+        return
+    
     if item in shopping_list:
         # Если продукт есть, проверяем, не голосовал ли уже этот юзер
         if user not in shopping_list[item]:
